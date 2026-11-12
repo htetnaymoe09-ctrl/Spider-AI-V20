@@ -1,5 +1,4 @@
-
-package com.spiderai.v20;
+ckageom.spiderai.v20;
 
 import android.Manifest;
 import android.app.Activity;
