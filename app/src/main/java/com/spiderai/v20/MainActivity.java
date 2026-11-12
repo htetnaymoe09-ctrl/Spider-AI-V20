@@ -51,7 +51,7 @@ private static final String GEMINI_MODEL =
     }
 
     private GradientDrawable bg(int color, int radius) {
-
+routerPrefs = getSharedPreferences(PREFS_FILE_NAME, MODE_PRIVATE);
 n      GradientDrawable d = new GradientDrawable();
         d.setColor(color);
         d.setCornerRadius(dp(radius));
@@ -61,7 +61,7 @@ n      GradientDrawable d = new GradientDrawable();
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
+routerPrefs = getSharedPreferences(PREFS_FILE_NAME, MODE_PRIVATE);
         tts = new TextToSpeech(this, result -> {
             if (result == TextToSpeech.SUCCESS) {
                 int lang = tts.setLanguage(
