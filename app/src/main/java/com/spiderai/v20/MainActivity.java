@@ -1,4 +1,4 @@
-ckageom.spiderai.v20;
+package com.spiderai.v20;
 
 import android.Manifest;
 import android.app.Activity;
@@ -50,8 +50,8 @@ private static final String GEMINI_MODEL =
     }
 
     private GradientDrawable bg(int color, int radius) {
-routerPrefs = getSharedPreferences(PREFS_FILE_NAME, MODE_PRIVATE);
-n      GradientDrawable d = new GradientDrawable();
+
+      GradientDrawable d = new GradientDrawable();
         d.setColor(color);
         d.setCornerRadius(dp(radius));
         return d;
