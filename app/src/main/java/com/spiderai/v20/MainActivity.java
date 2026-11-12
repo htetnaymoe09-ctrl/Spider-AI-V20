@@ -17,7 +17,14 @@ import android.view.Gravity;
 import android.widget.*;
 import java.util.ArrayList;
 import java.util.Locale;
-
+import android.content.SharedPreferences;
+import org.json.JSONArray;
+import org.json.JSONObject;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 public class MainActivity extends Activity {
 
     private TextView status;
@@ -25,7 +32,16 @@ public class MainActivity extends Activity {
     private EditText input;
     private ScrollView scroll;
     private TextToSpeech tts;
+private SharedPreferences routerPrefs;
 
+private static final String PREFS_FILE_NAME = "SpiderAISettings";
+private static final String OPENROUTER_KEY_NAME = "openrouter_api_key";
+
+private static final String OPENROUTER_URL =
+        "https://openrouter.ai/api/v1/chat/completions";
+
+private static final String GEMINI_MODEL =
+        "google/gemini-2.5-flash";
     private static final int AUDIO_REQUEST = 101;
     private static final int VOICE_REQUEST = 102;
 
@@ -35,7 +51,8 @@ public class MainActivity extends Activity {
     }
 
     private GradientDrawable bg(int color, int radius) {
-        GradientDrawable d = new GradientDrawable();
+
+n      GradientDrawable d = new GradientDrawable();
         d.setColor(color);
         d.setCornerRadius(dp(radius));
         return d;
