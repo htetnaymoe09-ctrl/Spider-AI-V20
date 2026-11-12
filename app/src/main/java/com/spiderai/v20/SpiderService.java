@@ -3,103 +3,33 @@ package com.spiderai.v20;
 
 import android.app.Service;
 import android.content.Intent;
-import android.graphics.Canvas;
-import android.graphics.Color;
-import android.graphics.Paint;
-import android.graphics.Path;
-import android.graphics.PixelFormat;
-import android.os.Build;
-import android.os.Handler;
-import android.os.IBinder;
+import android.graphics.*;
+import android.os.*;
 import android.provider.Settings;
-import android.view.Gravity;
-import android.view.MotionEvent;
-import android.view.View;
+import android.view.*;
 import android.view.WindowManager;
 
 import java.util.Random;
 
 public class SpiderService extends Service {
 
-    private WindowManager manager;
+    private WindowManager wm;
+    private WindowManager.LayoutParams lp;
     private SpiderView spider;
-    private WindowManager.LayoutParams params;
-    private final Handler handler = new Handler();
-    private final Random random = new Random();
+    private Handler handler = new Handler();
+    private Random random = new Random();
 
-    private boolean running = false;
+    private int sw, sh;
+    private float vx = 1.5f, vy = 0.5f;
+    private float phase = 0;
+    private boolean walking = true;
     private boolean dragging = false;
-
-    private float vx = 1.8f;
-    private float vy = 0.7f;
-    private long lastChange;
+    private long lastTime;
+    private long directionTime;
     private long pauseUntil;
-    private long lastFrame;
 
-    private int screenWidth;
-    private int screenHeight;
-
-    private final Runnable movement = new Runnable() {
-        @Override
-        public void run() {
-            if (!running || spider == null) return;
-
-            long now = System.currentTimeMillis();
-
-            float dt = lastFrame == 0 ? 0.016f :
-                    Math.min(0.04f, (now - lastFrame) / 1000f);
-
-            lastFrame = now;
-
-            if (!dragging && now >= pauseUntil) {
-
-                if (now - lastChange > 2500 + random.nextInt(2500)) {
-                    double angle = random.nextDouble() * Math.PI * 2;
-                    float speed = 1.0f + random.nextFloat() * 1.3f;
-
-                    vx = (float) Math.cos(angle) * speed;
-                    vy = (float) Math.sin(angle) * speed;
-
-                    lastChange = now;
-
-                    if (random.nextFloat() < 0.15f) {
-                        pauseUntil = now + 700;
-                    }
-                }
-
-                params.x += Math.round(vx * 60 * dt);
-                params.y += Math.round(vy * 60 * dt);
-
-                int maxX = Math.max(0, screenWidth - spider.getWidth());
-                int maxY = Math.max(0, screenHeight - spider.getHeight());
-
-                if (params.x <= 0 || params.x >= maxX) {
-                    vx = -vx;
-                    params.x = Math.max(0, Math.min(params.x, maxX));
-                }
-
-                if (params.y <= 0 || params.y >= maxY) {
-                    vy = -vy;
-                    params.y = Math.max(0, Math.min(params.y, maxY));
-                }
-
-                try {
-                    manager.updateViewLayout(spider, params);
-                } catch (Exception e) {
-                    stopSelf();
-                    return;
-                }
-            }
-
-            spider.setWalking(!dragging && now >= pauseUntil);
-            spider.invalidate();
-
-            handler.postDelayed(this, 16);
-        }
-    };
-
-    private int dp(float value) {
-        return (int) (value * getResources()
+    private int dp(float v) {
+        return (int)(v * getResources()
                 .getDisplayMetrics().density + 0.5f);
     }
 
@@ -112,193 +42,277 @@ public class SpiderService extends Service {
             return;
         }
 
-        manager = (WindowManager) getSystemService(WINDOW_SERVICE);
+        wm = (WindowManager)getSystemService(WINDOW_SERVICE);
 
-        android.util.DisplayMetrics metrics =
+        android.util.DisplayMetrics dm =
                 new android.util.DisplayMetrics();
 
-        if (Build.VERSION.SDK_INT >= 17) {
-            manager.getDefaultDisplay().getRealMetrics(metrics);
-        } else {
-            manager.getDefaultDisplay().getMetrics(metrics);
-        }
-
-        screenWidth = metrics.widthPixels;
-        screenHeight = metrics.heightPixels;
-
-        spider = new SpiderView();
+        wm.getDefaultDisplay().getRealMetrics(dm);
+        sw = dm.widthPixels;
+        sh = dm.heightPixels;
 
         int type = Build.VERSION.SDK_INT >= 26
                 ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
                 : WindowManager.LayoutParams.TYPE_PHONE;
 
-        params = new WindowManager.LayoutParams(
-                dp(76),
-                dp(76),
-                type,
+        lp = new WindowManager.LayoutParams(
+                dp(100), dp(100), type,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-                        | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
                 PixelFormat.TRANSLUCENT
         );
 
-        params.gravity = Gravity.TOP | Gravity.LEFT;
-        params.x = screenWidth / 3;
-        params.y = screenHeight / 3;
+        lp.gravity = Gravity.TOP | Gravity.LEFT;
+        lp.x = sw / 3;
+        lp.y = sh / 3;
+
+        spider = new SpiderView();
+        wm.addView(spider, lp);
 
         spider.setOnTouchListener(new View.OnTouchListener() {
-
-            private int startX, startY;
-            private float touchX, touchY;
+            float tx, ty;
+            int sx, sy;
 
             @Override
-            public boolean onTouch(View v, MotionEvent event) {
-
-                switch (event.getAction()) {
-
+            public boolean onTouch(View v, MotionEvent e) {
+                switch (e.getAction()) {
                     case MotionEvent.ACTION_DOWN:
                         dragging = true;
-                        startX = params.x;
-                        startY = params.y;
-                        touchX = event.getRawX();
-                        touchY = event.getRawY();
+                        sx = lp.x;
+                        sy = lp.y;
+                        tx = e.getRawX();
+                        ty = e.getRawY();
                         return true;
 
                     case MotionEvent.ACTION_MOVE:
-                        params.x = startX +
-                                (int)(event.getRawX() - touchX);
+                        lp.x = sx + (int)(e.getRawX() - tx);
+                        lp.y = sy + (int)(e.getRawY() - ty);
 
-                        params.y = startY +
-                                (int)(event.getRawY() - touchY);
+                        lp.x = Math.max(0, Math.min(
+                                lp.x, sw - spider.getWidth()));
+                        lp.y = Math.max(0, Math.min(
+                                lp.y, sh - spider.getHeight()));
 
-                        params.x = Math.max(0, Math.min(
-                                params.x, screenWidth - spider.getWidth()));
-
-                        params.y = Math.max(0, Math.min(
-                                params.y, screenHeight - spider.getHeight()));
-
-                        manager.updateViewLayout(spider, params);
+                        wm.updateViewLayout(spider, lp);
                         return true;
 
                     case MotionEvent.ACTION_UP:
                     case MotionEvent.ACTION_CANCEL:
                         dragging = false;
-                        lastChange = System.currentTimeMillis();
+                        directionTime = System.currentTimeMillis();
                         return true;
                 }
-
                 return false;
             }
         });
 
-        manager.addView(spider, params);
-
-        running = true;
-        handler.post(movement);
+        handler.post(frame);
     }
 
-    private class SpiderView extends View {
-
-        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private float phase = 0;
-        private boolean walking = true;
-
-        SpiderView() {
-            super(SpiderService.this);
-        }
-
-        void setWalking(boolean value) {
-            walking = value;
-        }
-
+    private Runnable frame = new Runnable() {
         @Override
-        protected void onDraw(Canvas canvas) {
-            super.onDraw(canvas);
+        public void run() {
+            if (spider == null) return;
 
-            float cx = getWidth() / 2f;
-            float cy = getHeight() / 2f;
+            long now = System.currentTimeMillis();
+            float dt = lastTime == 0 ? 0.016f :
+                    Math.min(0.04f, (now-lastTime)/1000f);
+            lastTime = now;
 
-            if (walking) phase += 0.18f;
+            if (!dragging) {
+                if (now > pauseUntil) {
+                    walking = true;
 
-            float bob = walking
-                    ? (float)Math.sin(phase * 2) * dp(1.5f)
-                    : 0;
+                    if (now - directionTime > 3000) {
+                        double a = random.nextDouble()
+                                * Math.PI * 2;
+                        float speed = 1.0f
+                                + random.nextFloat() * 1.3f;
 
-            canvas.save();
-            canvas.translate(0, bob);
+                        vx = (float)Math.cos(a) * speed;
+                        vy = (float)Math.sin(a) * speed;
 
-            paint.setColor(Color.rgb(35, 25, 43));
-            paint.setStyle(Paint.Style.STROKE);
-            paint.setStrokeWidth(dp(2.7f));
-            paint.setStrokeCap(Paint.Cap.ROUND);
+                        directionTime = now;
 
-            // Eight animated legs
-            for (int side = -1; side <= 1; side += 2) {
-                for (int i = 0; i < 4; i++) {
+                        if (random.nextFloat() < 0.15f) {
+                            pauseUntil = now + 900;
+                        }
+                    }
 
-                    float baseY = cy + (i - 1.5f) * dp(5);
+                    if (now < pauseUntil) walking = false;
 
-                    float swing = walking
-                            ? (float)Math.sin(phase + i * 1.5f
-                                    + (side == 1 ? Math.PI : 0)) * dp(5)
-                            : 0;
+                    lp.x += (int)(vx * 60 * dt);
+                    lp.y += (int)(vy * 60 * dt);
 
-                    Path leg = new Path();
+                    if (lp.x < 0 || lp.x > sw-dp(100)) {
+                        vx = -vx;
+                        lp.x = Math.max(0,
+                                Math.min(lp.x, sw-dp(100)));
+                    }
 
-                    leg.moveTo(cx + side * dp(8), baseY);
+                    if (lp.y < 0 || lp.y > sh-dp(100)) {
+                        vy = -vy;
+                        lp.y = Math.max(0,
+                                Math.min(lp.y, sh-dp(100)));
+                    }
 
-                    leg.quadTo(
-                            cx + side * dp(20),
-                            baseY - dp(8) + swing,
-                            cx + side * dp(27),
-                            baseY - dp(15) + swing
-                    );
-
-                    leg.lineTo(
-                            cx + side * dp(33),
-                            baseY - dp(21) + swing
-                    );
-
-                    canvas.drawPath(leg, paint);
+                    try {
+                        wm.updateViewLayout(spider, lp);
+                    } catch (Exception ignored) { }
+                } else {
+                    walking = false;
                 }
             }
 
-            // Abdomen
-            paint.setStyle(Paint.Style.FILL);
-            paint.setColor(Color.rgb(45, 32, 55));
+            spider.invalidate();
+            handler.postDelayed(this, 16);
+        }
+    };
 
-            canvas.drawOval(
-                    cx - dp(15), cy - dp(1),
-                    cx + dp(15), cy + dp(19), paint
-            );
+    private class SpiderView extends View {
 
-            // Body
-            canvas.drawCircle(cx, cy - dp(10), dp(10), paint);
+        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+        float s;
+
+        SpiderView() {
+            super(SpiderService.this);
+            s = getResources().getDisplayMetrics().density;
+        }
+
+        private void line(Canvas c, float x1, float y1,
+                          float x2, float y2, int color,
+                          float width) {
+            p.setColor(color);
+            p.setStrokeWidth(width*s);
+            p.setStrokeCap(Paint.Cap.ROUND);
+            p.setStyle(Paint.Style.STROKE);
+            c.drawLine(x1,y1,x2,y2,p);
+        }
+
+        @Override
+        protected void onDraw(Canvas c) {
+            super.onDraw(c);
+
+            float cx = getWidth()/2f;
+            float cy = getHeight()/2f;
+
+            if (walking) phase += 0.14f;
+
+            float bob = walking
+                    ? (float)Math.sin(phase*2)*2*s : 0;
+
+            c.save();
+            c.translate(0,bob);
+
+            int black = Color.rgb(35,29,42);
+            int red = Color.rgb(210,42,55);
+
+            // Eight articulated legs
+            for (int side=-1; side<=1; side+=2) {
+                for (int i=0; i<4; i++) {
+
+                    float baseY = cy + (i-1.5f)*5*s;
+
+                    float swing = walking
+                            ? (float)Math.sin(phase
+                            + i*Math.PI/2
+                            + (side==1 ? Math.PI : 0))*7*s
+                            : 0;
+
+                    float kneeX = cx + side*22*s;
+                    float kneeY = baseY - 8*s + swing;
+                    float footX = cx + side*32*s;
+                    float footY = baseY - 14*s + swing;
+
+                    // Upper leg
+                    line(c,cx+side*10*s,baseY,
+                            kneeX,kneeY,black,3);
+
+                    // Lower leg
+                    line(c,cx+side*10*s,baseY,
+                            kneeX,kneeY,red,1.2f);
+
+                    line(c,cx+side*22*s,kneeY,
+                            footX,footY,black,2.5f);
+
+                    // Joint
+                    p.setStyle(Paint.Style.FILL);
+                    p.setColor(red);
+                    c.drawCircle(kneeX,kneeY,2.5f*s,p);
+                    c.drawCircle(footX,footY,1.8f*s,p);
+                }
+            }
+
+            // Rear abdomen with soft 3D shading
+            p.setStyle(Paint.Style.FILL);
+            p.setShader(new RadialGradient(
+                    cx-5*s,cy+12*s,25*s,
+                    new int[]{
+                        Color.rgb(105,90,112),
+                        black,
+                        Color.rgb(15,12,20)
+                    },
+                    null,Shader.TileMode.CLAMP
+            ));
+
+            c.drawOval(cx-17*s,cy-1*s,
+                    cx+17*s,cy+28*s,p);
+            p.setShader(null);
+
+            // Red abdomen marking
+            p.setColor(red);
+            c.drawOval(cx-5*s,cy+8*s,
+                    cx+5*s,cy+17*s,p);
 
             // Head
-            canvas.drawCircle(cx, cy - dp(22), dp(7), paint);
+            p.setShader(new RadialGradient(
+                    cx-5*s,cy-14*s,20*s,
+                    new int[]{
+                        Color.rgb(120,110,130),
+                        black,
+                        Color.BLACK
+                    },
+                    null,Shader.TileMode.CLAMP
+            ));
 
-            // Red body markings
-            paint.setColor(Color.rgb(210, 45, 55));
-            canvas.drawCircle(cx, cy + dp(7), dp(3), paint);
+            c.drawCircle(cx,cy-11*s,14*s,p);
+            p.setShader(null);
 
-            // Eyes
-            paint.setColor(Color.WHITE);
-            canvas.drawCircle(cx - dp(2.5f), cy - dp(23), dp(1.2f), paint);
-            canvas.drawCircle(cx + dp(2.5f), cy - dp(23), dp(1.2f), paint);
+            // Big glossy eyes
+            for (int side=-1;side<=1;side+=2) {
+                float ex = cx+side*6*s;
+                float ey = cy-13*s;
 
-            canvas.restore();
+                p.setColor(Color.rgb(105,30,42));
+                c.drawCircle(ex,ey,6.5f*s,p);
+
+                p.setColor(Color.rgb(15,18,28));
+                c.drawCircle(ex,ey,5*s,p);
+
+                p.setColor(Color.WHITE);
+                c.drawCircle(ex-side*1.5f*s,
+                        ey-2*s,1.8f*s,p);
+            }
+
+            // Tiny mouth
+            p.setColor(Color.rgb(230,180,180));
+            p.setStyle(Paint.Style.STROKE);
+            p.setStrokeWidth(1.2f*s);
+            c.drawArc(cx-3*s,cy-4*s,
+                    cx+3*s,cy+2*s,15,150,
+                    false,p);
+
+            c.restore();
         }
     }
 
     @Override
     public void onDestroy() {
+        handler.removeCallbacks(frame);
 
-        running = false;
-        handler.removeCallbacks(movement);
-
-        if (spider != null && manager != null) {
+        if (spider != null && wm != null) {
             try {
-                manager.removeView(spider);
+                wm.removeView(spider);
             } catch (Exception ignored) { }
         }
 
@@ -310,4 +324,5 @@ public class SpiderService extends Service {
     public IBinder onBind(Intent intent) {
         return null;
     }
-}
+                    }
+                
