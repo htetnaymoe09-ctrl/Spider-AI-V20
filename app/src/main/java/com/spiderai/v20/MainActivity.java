@@ -12,6 +12,8 @@ import android.widget.TextView;
 
 public class MainActivity extends Activity {
 
+    private TextView status;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -25,7 +27,7 @@ public class MainActivity extends Activity {
         title.setTextSize(25);
         layout.addView(title);
 
-        TextView status = new TextView(this);
+        status = new TextView(this);
         status.setText("Spider AI is ready!");
         status.setTextSize(18);
         layout.addView(status);
@@ -34,18 +36,31 @@ public class MainActivity extends Activity {
         start.setText("Start Spider");
         layout.addView(start);
 
-        start.setOnClickListener(v -> {
-            if (!Settings.canDrawOverlays(this)) {
-                Intent intent = new Intent(
-                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                    Uri.parse("package:" + getPackageName())
-                );
-                startActivity(intent);
-            } else {
-                status.setText("Spider permission ready!");
-            }
+        Button stop = new Button(this);
+        stop.setText("Stop Spider");
+        layout.addView(stop);
+
+        start.setOnClickListener(v -> startSpider());
+
+        stop.setOnClickListener(v -> {
+            stopService(new Intent(this, SpiderService.class));
+            status.setText("Spider stopped");
         });
 
         setContentView(layout);
+    }
+
+    private void startSpider() {
+        if (!Settings.canDrawOverlays(this)) {
+            Intent intent = new Intent(
+                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                Uri.parse("package:" + getPackageName())
+            );
+            startActivity(intent);
+            status.setText("Allow display over other apps");
+        } else {
+            startService(new Intent(this, SpiderService.class));
+            status.setText("Spider started!");
+        }
     }
 }
